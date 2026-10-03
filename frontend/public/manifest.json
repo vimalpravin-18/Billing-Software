@@ -1,0 +1,25 @@
+{
+  "short_name": "BakeryPOS",
+  "name": "BakeryPOS — Commercial Billing System",
+  "description": "Enterprise-grade commercial bakery billing, POS counter, and store inventory management system.",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/pos",
+  "background_color": "#0b0d13",
+  "theme_color": "#f59e0b",
+  "display": "standalone",
+  "orientation": "any",
+  "scope": "/"
+}

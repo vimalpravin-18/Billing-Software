@@ -1,0 +1,86 @@
+# ==============================================================================
+# BakeryPOS — Root .gitignore
+# Prevents sensitive secrets, local credentials, dumps, and build artifacts
+# from being committed to GitHub.
+# ==============================================================================
+
+# --- Secrets & Environment Files ---
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.env
+*.env.local
+*.local
+*.pem
+*.key
+*.cert
+*.crt
+id_rsa
+credentials.json
+
+# --- Database Backups, Dumps & Data Files ---
+backups/
+*.sql
+*.dump
+*.tar
+*.gz
+*.sqlite
+*.sqlite3
+*.db
+
+# --- Local Tools & Binaries (Standalone Maven / JDK etc.) ---
+tools/
+bin/
+
+# --- Operating System Files ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# --- IDEs & Code Editors ---
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.bak
+
+# --- Logs & Temp Files ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- Backend (Java / Maven Build Artifacts) ---
+backend/target/
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# --- Frontend (Node / React / Vite Build Artifacts) ---
+frontend/node_modules/
+**/node_modules/
+frontend/dist/
+**/dist/
+dist-ssr/
+.oxlint-cache
+.eslintcache

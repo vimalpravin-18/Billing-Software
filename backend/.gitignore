@@ -1,0 +1,32 @@
+# ==============================================================================
+# Backend (Spring Boot / Maven) .gitignore
+# ==============================================================================
+
+# Compiled binaries and target build folder
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Logs
+logs/
+*.log
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
