@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { useToast } from '../context/ToastContext';
-import { Settings, Save, CheckCircle, Store, Receipt, Percent, FileText } from 'lucide-react';
+import { Settings, Save, CheckCircle, Store, Receipt, Percent, FileText, Download, Upload, HardDrive } from 'lucide-react';
+import { exportAllDataAsJson, importAllDataFromJson } from '../services/db';
 
 const SettingsPage = () => {
   const [form, setForm] = useState({
@@ -16,8 +17,58 @@ const SettingsPage = () => {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const { showSuccess, showError } = useToast();
+
+  const handleExportBackup = async () => {
+    setIsExporting(true);
+    try {
+      const backupData = await exportAllDataAsJson();
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filename = `bakerypos_local_backup_${dateStr}.json`;
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showSuccess(`Local data backup saved to ${filename}!`);
+    } catch (err) {
+      console.error('Export error:', err);
+      showError('Failed to generate local backup file.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportBackup = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!window.confirm('Restoring will merge/update your local product catalog and offline orders. Continue?')) {
+      e.target.value = '';
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      await importAllDataFromJson(json);
+      showSuccess('Backup restored successfully into local storage!');
+    } catch (err) {
+      console.error('Import error:', err);
+      showError(err.message || 'Failed to restore backup file. Invalid format.');
+    } finally {
+      setIsImporting(false);
+      e.target.value = '';
+    }
+  };
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -206,6 +257,75 @@ const SettingsPage = () => {
           </button>
         </div>
       </form>
+
+      {/* Section 4: Offline Data Backup & Emergency Recovery */}
+      <div className="bg-white dark:bg-[#121622] border border-slate-200 dark:border-slate-800/90 rounded-2xl p-4 sm:p-5 shadow-sm dark:shadow-xl space-y-4 transition-colors">
+        <div className="flex items-center space-x-2 pb-2.5 border-b border-slate-200 dark:border-slate-800">
+          <HardDrive className="w-5 h-5 text-amber-500" />
+          <div>
+            <h3 className="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base">
+              Offline Storage Backup & Disaster Recovery
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              Export all local products, offline queue, and settings to a JSON file on your computer/USB drive, or restore data on a new device.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Export Backup Card */}
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#171c2b] border border-slate-200 dark:border-slate-700/80 flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center space-x-2 text-slate-900 dark:text-white font-bold text-sm">
+                <Download className="w-4 h-4 text-emerald-500" />
+                <span>Export Local Data Backup</span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Save an instant snapshot of your product catalog, prices, customers, and any pending offline orders to your computer.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleExportBackup}
+              disabled={isExporting}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center space-x-2 transition-colors cursor-pointer w-full sm:w-auto self-start"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{isExporting ? 'Generating...' : 'Download Backup File (.json)'}</span>
+            </button>
+          </div>
+
+          {/* Import / Restore Card */}
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#171c2b] border border-slate-200 dark:border-slate-700/80 flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center space-x-2 text-slate-900 dark:text-white font-bold text-sm">
+                <Upload className="w-4 h-4 text-blue-500" />
+                <span>Restore from Backup File</span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Restore products, customers, and pending orders from a previously downloaded backup JSON file onto this device.
+              </p>
+            </div>
+            <div>
+              <input
+                type="file"
+                id="restore-file-input"
+                accept=".json"
+                onChange={handleImportBackup}
+                disabled={isImporting}
+                className="hidden"
+              />
+              <label
+                htmlFor="restore-file-input"
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center space-x-2 transition-colors cursor-pointer w-full sm:w-auto self-start inline-flex"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>{isImporting ? 'Restoring...' : 'Select Backup File to Restore'}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

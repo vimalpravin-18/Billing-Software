@@ -16,6 +16,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @EntityGraph(attributePaths = {"customer", "cashierUser", "orderItems", "orderItems.product"})
     Optional<Order> findByInvoiceNumber(String invoiceNumber);
 
+    boolean existsByInvoiceNumber(String invoiceNumber);
+
+    @EntityGraph(attributePaths = {"customer", "cashierUser", "orderItems", "orderItems.product"})
+    Optional<Order> findByClientOrderUuid(String clientOrderUuid);
+
     @Override
     @EntityGraph(attributePaths = {"customer", "cashierUser", "orderItems", "orderItems.product"})
     Optional<Order> findById(Long id);

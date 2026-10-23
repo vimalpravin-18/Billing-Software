@@ -6,12 +6,15 @@ import java.math.BigDecimal;
 
 public class CreateOrderItemRequest {
 
-    @NotNull(message = "Product ID is required")
     private Long productId;
 
     @NotNull(message = "Quantity is required")
     @DecimalMin(value = "0.001", message = "Quantity must be > 0")
     private BigDecimal quantity;
+
+    private BigDecimal unitPrice;
+    private String customItemName;
+    private BigDecimal taxRate;
 
     public CreateOrderItemRequest() {}
 
@@ -25,4 +28,13 @@ public class CreateOrderItemRequest {
 
     public BigDecimal getQuantity() { return quantity; }
     public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
+
+    public BigDecimal getUnitPrice() { return unitPrice; }
+    public void setUnitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; }
+
+    public String getCustomItemName() { return customItemName; }
+    public void setCustomItemName(String customItemName) { this.customItemName = customItemName; }
+
+    public BigDecimal getTaxRate() { return taxRate; }
+    public void setTaxRate(BigDecimal taxRate) { this.taxRate = taxRate; }
 }

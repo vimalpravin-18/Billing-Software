@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../services/api';
 import InvoicePrintModal from '../components/invoice/InvoicePrintModal';
+import { getLocalOrders } from '../services/db';
 import { Receipt, Search, Printer, Calendar, Filter, RefreshCw, ArrowUpDown, Users } from 'lucide-react';
 
 const OrdersPage = () => {
@@ -13,16 +14,22 @@ const OrdersPage = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   const fetchData = async () => {
-    setLoading(true);
+    // Try local orders first for instant render
+    const local = await getLocalOrders(200);
+    if (local && local.length > 0) {
+      setOrders(local);
+      setLoading(false);
+    }
+
     try {
       const [ordRes, setRes] = await Promise.allSettled([
-        api.get('/orders'),
-        api.get('/settings'),
+        api.get('/orders', { timeout: 8000 }),
+        api.get('/settings', { timeout: 8000 }),
       ]);
       if (ordRes.status === 'fulfilled') setOrders(ordRes.value.data);
       if (setRes.status === 'fulfilled') setShopSettings(setRes.value.data);
     } catch (err) {
-      console.error('Failed to load orders history', err);
+      console.warn('Network orders fetch fallback to local history:', err);
     } finally {
       setLoading(false);
     }

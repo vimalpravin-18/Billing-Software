@@ -20,6 +20,7 @@ public class OrderResponseDto {
     private String paymentStatus;
     private String orderStatus;
     private LocalDateTime createdAt;
+    private String clientOrderUuid;
     private List<OrderItemResponseDto> items;
 
     public OrderResponseDto() {}
@@ -68,6 +69,9 @@ public class OrderResponseDto {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public String getClientOrderUuid() { return clientOrderUuid; }
+    public void setClientOrderUuid(String clientOrderUuid) { this.clientOrderUuid = clientOrderUuid; }
 
     public List<OrderItemResponseDto> getItems() { return items; }
     public void setItems(List<OrderItemResponseDto> items) { this.items = items; }

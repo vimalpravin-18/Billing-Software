@@ -20,6 +20,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -49,6 +50,14 @@ public class BillingService {
 
     @Transactional
     public OrderResponseDto createOrder(CreateOrderRequest request) {
+        // Idempotency check: if order was already synced with this client UUID, return existing order
+        if (request.getClientOrderUuid() != null && !request.getClientOrderUuid().trim().isEmpty()) {
+            Optional<Order> existingOrder = orderRepository.findByClientOrderUuid(request.getClientOrderUuid().trim());
+            if (existingOrder.isPresent()) {
+                return mapToResponseDto(existingOrder.get());
+            }
+        }
+
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         User cashier = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Cashier user not found: " + username));
@@ -65,7 +74,30 @@ public class BillingService {
         order.setPaymentMethod(request.getPaymentMethod());
         order.setPaymentStatus(PaymentStatus.PAID);
         order.setOrderStatus(OrderStatus.COMPLETED);
-        order.setInvoiceNumber(generateInvoiceNumber());
+
+        // Determine invoice number
+        String invoiceNumber;
+        if (request.getOfflineInvoiceNumber() != null && !request.getOfflineInvoiceNumber().trim().isEmpty()) {
+            String offInv = request.getOfflineInvoiceNumber().trim();
+            if (!orderRepository.existsByInvoiceNumber(offInv)) {
+                invoiceNumber = offInv;
+            } else {
+                invoiceNumber = generateInvoiceNumber();
+            }
+        } else {
+            invoiceNumber = generateInvoiceNumber();
+        }
+        order.setInvoiceNumber(invoiceNumber);
+
+        if (request.getClientOrderUuid() != null && !request.getClientOrderUuid().trim().isEmpty()) {
+            order.setClientOrderUuid(request.getClientOrderUuid().trim());
+        }
+
+        if (request.getCreatedAt() != null) {
+            order.setCreatedAt(request.getCreatedAt());
+        } else {
+            order.setCreatedAt(LocalDateTime.now());
+        }
 
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal totalTax = BigDecimal.ZERO;
@@ -73,24 +105,54 @@ public class BillingService {
         List<InventoryTransaction> transactions = new java.util.ArrayList<>();
 
         for (CreateOrderItemRequest itemReq : request.getItems()) {
-            // Acquire pessimistic write lock to prevent concurrent overselling
-            Product product = productRepository.findByIdWithLock(itemReq.getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + itemReq.getProductId()));
+            Product product = null;
+            BigDecimal unitPrice;
+            BigDecimal taxRate;
+            String productName;
 
-            if (!product.isActive()) {
-                throw new BadRequestException("Product '" + product.getName() + "' is inactive and cannot be sold");
+            if (itemReq.getProductId() != null) {
+                product = productRepository.findByIdWithLock(itemReq.getProductId()).orElse(null);
             }
 
-            if (product.getStockQuantity().compareTo(itemReq.getQuantity()) < 0) {
-                throw new InsufficientStockException("Insufficient stock for product '" + product.getName() +
-                        "'. Requested: " + itemReq.getQuantity() + " " + product.getUnit() +
-                        ", Available: " + product.getStockQuantity() + " " + product.getUnit());
+            if (product != null) {
+                if (!product.isActive()) {
+                    throw new BadRequestException("Product '" + product.getName() + "' is inactive and cannot be sold");
+                }
+
+                unitPrice = product.getSellingPrice();
+                taxRate = product.getTaxRate() != null ? product.getTaxRate() : BigDecimal.ZERO;
+                productName = product.getName();
+
+                BigDecimal currentStock = product.getStockQuantity() != null ? product.getStockQuantity() : BigDecimal.ZERO;
+                // Live orders strictly check stock; offline synced orders allow stock to update without rejecting the bill
+                if (request.getClientOrderUuid() == null && currentStock.compareTo(itemReq.getQuantity()) < 0) {
+                    throw new InsufficientStockException("Insufficient stock for product '" + product.getName() +
+                            "'. Requested: " + itemReq.getQuantity() + " " + product.getUnit() +
+                            ", Available: " + currentStock + " " + product.getUnit());
+                }
+
+                // Deduct stock
+                BigDecimal newStock = currentStock.subtract(itemReq.getQuantity());
+                product.setStockQuantity(newStock);
+
+                transactions.add(new InventoryTransaction(
+                        product,
+                        itemReq.getQuantity().negate(),
+                        newStock,
+                        "SALE",
+                        "POS Order " + order.getInvoiceNumber(),
+                        cashier
+                ));
+            } else {
+                // Custom or miscellaneous line item
+                unitPrice = itemReq.getUnitPrice() != null ? itemReq.getUnitPrice() : BigDecimal.ZERO;
+                taxRate = itemReq.getTaxRate() != null ? itemReq.getTaxRate() : BigDecimal.ZERO;
+                productName = (itemReq.getCustomItemName() != null && !itemReq.getCustomItemName().trim().isEmpty())
+                        ? itemReq.getCustomItemName().trim()
+                        : "Custom Bakery Item";
             }
 
-            BigDecimal unitPrice = product.getSellingPrice();
-            BigDecimal taxRate = product.getTaxRate();
             BigDecimal quantity = itemReq.getQuantity();
-
             BigDecimal lineTotal = unitPrice.multiply(quantity).setScale(2, RoundingMode.HALF_UP);
             BigDecimal itemTax = lineTotal.multiply(taxRate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
@@ -99,26 +161,13 @@ public class BillingService {
 
             OrderItem orderItem = new OrderItem();
             orderItem.setProduct(product);
-            orderItem.setProductNameSnapshot(product.getName());
+            orderItem.setProductNameSnapshot(productName);
             orderItem.setQuantity(quantity);
             orderItem.setUnitPriceSnapshot(unitPrice);
             orderItem.setTaxRateSnapshot(taxRate);
             orderItem.setLineTotal(lineTotal);
 
             order.addOrderItem(orderItem);
-
-            // Deduct stock
-            BigDecimal newStock = product.getStockQuantity().subtract(quantity);
-            product.setStockQuantity(newStock);
-
-            transactions.add(new InventoryTransaction(
-                    product,
-                    quantity.negate(),
-                    newStock,
-                    "SALE",
-                    "POS Order " + order.getInvoiceNumber(),
-                    cashier
-            ));
         }
 
         // Batch save inventory transactions
@@ -140,6 +189,23 @@ public class BillingService {
 
         Order savedOrder = orderRepository.save(order);
         return mapToResponseDto(savedOrder);
+    }
+
+    @Transactional
+    public List<OrderResponseDto> syncOfflineBatch(List<CreateOrderRequest> requests) {
+        List<OrderResponseDto> syncedOrders = new java.util.ArrayList<>();
+        if (requests == null || requests.isEmpty()) {
+            return syncedOrders;
+        }
+
+        for (CreateOrderRequest req : requests) {
+            try {
+                syncedOrders.add(createOrder(req));
+            } catch (Exception ex) {
+                // If single order fails, skip or log to allow others to sync
+            }
+        }
+        return syncedOrders;
     }
 
     @Transactional(readOnly = true)
@@ -184,17 +250,26 @@ public class BillingService {
                 .collect(Collectors.toList());
     }
 
-    private String generateInvoiceNumber() {
+    private synchronized String generateInvoiceNumber() {
         String prefix = shopSettingService.getCachedInvoicePrefix();
         String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        long seq = invoiceCounter.incrementAndGet() % 10000;
-        return String.format("%s-%s-%04d", prefix, datePart, seq);
+        for (int i = 0; i < 20; i++) {
+            long seq = invoiceCounter.incrementAndGet() % 10000;
+            String candidate = String.format("%s-%s-%04d", prefix, datePart, seq);
+            if (!orderRepository.existsByInvoiceNumber(candidate)) {
+                return candidate;
+            }
+        }
+        long ts = System.currentTimeMillis() % 100000;
+        int rand = java.util.concurrent.ThreadLocalRandom.current().nextInt(100, 999);
+        return String.format("%s-%s-%05d%03d", prefix, datePart, ts, rand);
     }
 
     public OrderResponseDto mapToResponseDto(Order order) {
         OrderResponseDto dto = new OrderResponseDto();
         dto.setId(order.getId());
         dto.setInvoiceNumber(order.getInvoiceNumber());
+        dto.setClientOrderUuid(order.getClientOrderUuid());
         if (order.getCustomer() != null) {
             dto.setCustomerId(order.getCustomer().getId());
             dto.setCustomerName(order.getCustomer().getName());

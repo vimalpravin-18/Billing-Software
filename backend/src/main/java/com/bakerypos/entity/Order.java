@@ -56,6 +56,9 @@ public class Order {
     @Column(name = "order_status", nullable = false)
     private OrderStatus orderStatus;
 
+    @Column(name = "client_order_uuid", unique = true, length = 64)
+    private String clientOrderUuid;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -109,6 +112,9 @@ public class Order {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public String getClientOrderUuid() { return clientOrderUuid; }
+    public void setClientOrderUuid(String clientOrderUuid) { this.clientOrderUuid = clientOrderUuid; }
 
     public List<OrderItem> getOrderItems() { return orderItems; }
     public void setOrderItems(List<OrderItem> orderItems) { this.orderItems = orderItems; }

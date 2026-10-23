@@ -26,6 +26,12 @@ public class BillingController {
         return new ResponseEntity<>(order, HttpStatus.CREATED);
     }
 
+    @PostMapping("/sync-offline")
+    public ResponseEntity<List<OrderResponseDto>> syncOfflineOrders(@RequestBody List<CreateOrderRequest> requests) {
+        List<OrderResponseDto> synced = billingService.syncOfflineBatch(requests);
+        return ResponseEntity.ok(synced);
+    }
+
     @GetMapping
     public ResponseEntity<List<OrderResponseDto>> getAllOrders() {
         return ResponseEntity.ok(billingService.getAllOrders());

@@ -5,6 +5,20 @@ import InvoicePrintModal from '../components/invoice/InvoicePrintModal';
 import ProductImage from '../components/pos/ProductImage';
 import ViewAllItemsModal from '../components/pos/ViewAllItemsModal';
 import {
+  saveProductsToDb,
+  getProductsFromDb,
+  updateProductStockInDb,
+  saveCategoriesToDb,
+  getCategoriesFromDb,
+  saveCustomersToDb,
+  getCustomersFromDb,
+  saveSettingsToDb,
+  getSettingsFromDb,
+  enqueueOrderForSync,
+  saveLocalOrder,
+} from '../services/db';
+import syncManager from '../services/syncManager';
+import {
   Search,
   Plus,
   Minus,
@@ -218,10 +232,10 @@ const PosScreen = () => {
 
     try {
       const requests = [
-        api.get('/products'),
-        !forceRefresh && cachedMasterCategories ? Promise.resolve({ data: cachedMasterCategories }) : api.get('/categories'),
-        api.get('/customers'),
-        !forceRefresh && cachedMasterSettings ? Promise.resolve({ data: cachedMasterSettings }) : api.get('/settings'),
+        api.get('/products', { timeout: 8000 }),
+        !forceRefresh && cachedMasterCategories ? Promise.resolve({ data: cachedMasterCategories }) : api.get('/categories', { timeout: 8000 }),
+        api.get('/customers', { timeout: 8000 }),
+        !forceRefresh && cachedMasterSettings ? Promise.resolve({ data: cachedMasterSettings }) : api.get('/settings', { timeout: 8000 }),
       ];
 
       const [prodRes, catRes, custRes, setRes] = await Promise.allSettled(requests);
@@ -230,42 +244,74 @@ const PosScreen = () => {
         const prods = prodRes.value.data || [];
         cachedMasterProducts = prods;
         setStoredJson('pos_cached_products', prods);
+        saveProductsToDb(prods);
         setProducts(prods);
       }
       if (catRes.status === 'fulfilled') {
         const cats = catRes.value.data || [];
         cachedMasterCategories = cats;
         setStoredJson('pos_cached_categories', cats);
+        saveCategoriesToDb(cats);
         setCategories(cats);
       }
       if (custRes.status === 'fulfilled') {
         const custs = custRes.value.data || [];
         setStoredJson('pos_cached_customers', custs);
+        saveCustomersToDb(custs);
         setCustomers(custs);
       }
       if (setRes.status === 'fulfilled') {
         const settings = setRes.value.data;
         cachedMasterSettings = settings;
         setStoredJson('pos_cached_settings', settings);
+        saveSettingsToDb(settings);
         setShopSettings(settings);
         generateInvoiceNumber(settings);
       } else {
         generateInvoiceNumber(shopSettings);
       }
     } catch (err) {
-      console.error('Failed to load POS master data', err);
-      if (products.length === 0) {
-        showError('Unable to connect to backend service. Please verify server status.');
-      }
+      console.warn('Network master data fetch fallback to local storage:', err);
     } finally {
       setLoading(false);
       setIsSyncing(false);
     }
-  }, [products.length, shopSettings, generateInvoiceNumber, showError]);
+  }, [products.length, shopSettings, generateInvoiceNumber]);
 
+  // On mount: hydrate from IndexedDB first for instant 0ms load, then background sync
   useEffect(() => {
-    fetchMasterData(false);
-  }, [fetchMasterData]);
+    let isMounted = true;
+    const hydrateLocalDb = async () => {
+      try {
+        const [dbProds, dbCats, dbCusts, dbSettings] = await Promise.all([
+          getProductsFromDb(),
+          getCategoriesFromDb(),
+          getCustomersFromDb(),
+          getSettingsFromDb(),
+        ]);
+
+        if (isMounted) {
+          if (dbProds && dbProds.length > 0) setProducts(dbProds);
+          if (dbCats && dbCats.length > 0) setCategories(dbCats);
+          if (dbCusts && dbCusts.length > 0) setCustomers(dbCusts);
+          if (dbSettings) {
+            setShopSettings(dbSettings);
+            generateInvoiceNumber(dbSettings);
+          }
+          setLoading(false);
+        }
+      } catch (err) {
+        console.warn('Error reading from IndexedDB:', err);
+      }
+
+      if (isMounted) {
+        fetchMasterData(false);
+      }
+    };
+
+    hydrateLocalDb();
+    return () => { isMounted = false; };
+  }, [fetchMasterData, generateInvoiceNumber]);
 
   // Fast Cart Quantity Map
   const cartItemMap = useMemo(() => {
@@ -415,7 +461,7 @@ const PosScreen = () => {
 
     const customLine = {
       id: `custom-${Date.now()}`,
-      productId: products[0]?.id || null,
+      productId: null,
       name: name,
       imageUrl: null,
       sku: 'CUSTOM',
@@ -527,7 +573,7 @@ const PosScreen = () => {
     };
   }, [cartItems, discountAmount, discountType]);
 
-  // Checkout & Submit Order to Backend (Guarded against double clicks & network retries)
+  // Checkout & Submit Order (Offline-First: never fails, queues when offline, prints immediately)
   const handleCheckout = useCallback(async () => {
     if (cartItems.length === 0) {
       showWarning('Cannot checkout an empty ticket. Add items first.');
@@ -540,43 +586,130 @@ const PosScreen = () => {
 
     isSubmittingRef.current = true;
     setSubmitting(true);
+
+    const clientOrderUuid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `off-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    const prefix = shopSettings?.invoicePrefix || 'BAKE';
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const randSeq = String(Math.floor(1000 + Math.random() * 9000));
+    const currentInvoiceNum = invoiceNumber || `${prefix}-${dateStr}-${randSeq}`;
+
+    const orderPayload = {
+      clientOrderUuid,
+      offlineInvoiceNumber: currentInvoiceNum,
+      customerId: selectedCustomerId ? Number(selectedCustomerId) : null,
+      customerName: selectedCustomer ? selectedCustomer.name : 'Walk-in Customer',
+      customerPhone: selectedCustomer ? selectedCustomer.phone : null,
+      paymentMethod: paymentMethod,
+      paymentStatus: 'PAID',
+      orderStatus: 'COMPLETED',
+      discountAmount: Number(calculations.discount),
+      subtotal: Number(calculations.subtotal),
+      taxAmount: Number(calculations.taxTotal),
+      totalAmount: Number(calculations.grandTotal),
+      notes: `POS Sale (${cartItems.length} lines)`,
+      createdAt: new Date().toISOString(),
+      items: cartItems.map((item) => ({
+        productId: item.productId ? Number(item.productId) : null,
+        name: item.name,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.price),
+        taxRate: Number(item.taxRate || 0),
+        customItemName: item.productId ? null : item.name,
+        lineTotal: Number((Number(item.price) * Number(item.quantity)).toFixed(2)),
+        sku: item.sku,
+        unit: item.unit,
+      })),
+    };
+
+    let completed = null;
+
     try {
-      const orderPayload = {
-        customerId: selectedCustomerId ? Number(selectedCustomerId) : null,
-        paymentMethod: paymentMethod,
-        discountAmount: Number(calculations.discount),
-        notes: `POS Terminal Sale (${cartItems.length} lines)`,
-        items: cartItems.map((item) => ({
-          productId: item.productId,
-          quantity: Number(item.quantity),
-          unitPrice: Number(item.price),
+      // 1. Attempt live server submission with 6-second timeout
+      const response = await api.post('/orders', orderPayload, { timeout: 6000 });
+      completed = response.data;
+      await saveLocalOrder(completed);
+      showSuccess(`Order completed! Invoice #${completed.invoiceNumber}`);
+    } catch (networkErr) {
+      console.warn('Live server unreachable or slow, switching to seamless offline mode:', networkErr);
+
+      // 2. Offline fallback: construct order object for instant receipt printing
+      completed = {
+        id: Date.now(),
+        invoiceNumber: currentInvoiceNum,
+        clientOrderUuid,
+        customerId: orderPayload.customerId,
+        customerName: orderPayload.customerName,
+        customerPhone: orderPayload.customerPhone,
+        cashierName: 'POS Cashier',
+        subtotal: orderPayload.subtotal,
+        discountAmount: orderPayload.discountAmount,
+        taxAmount: orderPayload.taxAmount,
+        totalAmount: orderPayload.totalAmount,
+        paymentMethod: orderPayload.paymentMethod,
+        paymentStatus: 'PAID',
+        orderStatus: 'COMPLETED',
+        createdAt: orderPayload.createdAt,
+        isOffline: true,
+        items: orderPayload.items.map((line, idx) => ({
+          id: `line-${idx}-${Date.now()}`,
+          productId: line.productId,
+          productName: line.name,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          taxRate: line.taxRate,
+          lineTotal: line.lineTotal,
         })),
       };
 
-      const response = await api.post('/orders', orderPayload);
-      const savedOrder = response.data;
-
-      setCompletedOrder(savedOrder);
-      showSuccess(`Order completed! Invoice #${savedOrder.invoiceNumber}`);
-
-      // Reset ticket state for next customer
-      setCartItems([]);
-      setDiscountAmount('0.00');
-      setSelectedCustomerId('');
-      setSelectedCustomer(null);
-      generateInvoiceNumber(shopSettings);
-
-      // Refresh product stock
-      api.get('/products').then((res) => setProducts(res.data || [])).catch(() => {});
-    } catch (err) {
-      console.error('Checkout error:', err);
-      const msg = err.response?.data?.message || 'Transaction failed. Please check stock limits.';
-      showError(msg);
-    } finally {
-      isSubmittingRef.current = false;
-      setSubmitting(false);
+      try {
+        await enqueueOrderForSync(orderPayload);
+        await saveLocalOrder(completed);
+        syncManager.refreshPendingCount();
+        showSuccess(`Saved offline! Invoice #${currentInvoiceNum} (Queued for sync)`);
+      } catch (storageErr) {
+        console.error('Local storage queue error:', storageErr);
+      }
     }
-  }, [cartItems, selectedCustomerId, paymentMethod, calculations.discount, shopSettings, generateInvoiceNumber, showSuccess, showError, showWarning]);
+
+    // 3. Immediately deduct stock locally in IndexedDB and in state
+    cartItems.forEach((item) => {
+      if (item.productId) {
+        updateProductStockInDb(item.productId, item.quantity);
+      }
+    });
+
+    setProducts((prev) =>
+      prev.map((p) => {
+        const line = cartItems.find((item) => item.productId === p.id);
+        if (line) {
+          return {
+            ...p,
+            stockQuantity: Math.max(0, (Number(p.stockQuantity) || 0) - Number(line.quantity)),
+          };
+        }
+        return p;
+      })
+    );
+
+    // 4. Open receipt print modal immediately
+    if (completed) {
+      setCompletedOrder(completed);
+    }
+
+    // 5. Reset ticket state for next customer
+    setCartItems([]);
+    setDiscountAmount('0.00');
+    setSelectedCustomerId('');
+    setSelectedCustomer(null);
+    setCustomerSearchTerm('');
+    generateInvoiceNumber(shopSettings);
+
+    isSubmittingRef.current = false;
+    setSubmitting(false);
+  }, [cartItems, selectedCustomerId, selectedCustomer, paymentMethod, calculations, shopSettings, invoiceNumber, generateInvoiceNumber, showSuccess, showWarning]);
 
   // Keyboard shortcut listener (Ctrl+/ for search, F4 for checkout)
   useEffect(() => {

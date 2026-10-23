@@ -6,6 +6,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { Store, LogOut, Clock, Menu, ShoppingBag, Sun, Moon, KeyRound } from 'lucide-react';
 import ChangePasswordModal from '../auth/ChangePasswordModal';
 import LogoutConfirmModal from '../auth/LogoutConfirmModal';
+import SyncStatusBadge from './SyncStatusBadge';
 
 const LiveStationClock = React.memo(() => {
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -63,8 +64,11 @@ const Header = ({ onOpenMobileMenu }) => {
       {/* Center: Live Station Clock (Isolated to prevent re-renders) */}
       <LiveStationClock />
 
-      {/* Right: Actions, Theme, Cart Pill, Identity */}
+      {/* Right: Actions, Sync Status, Theme, Cart Pill, Identity */}
       <div className="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
+        {/* Offline Sync Status Indicator */}
+        <SyncStatusBadge />
+
         {/* Theme Toggle Button */}
         <button
           type="button"
