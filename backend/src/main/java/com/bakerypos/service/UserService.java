@@ -18,12 +18,17 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final com.bakerypos.security.CustomUserDetailsService customUserDetailsService;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository,
+                       PasswordEncoder passwordEncoder,
+                       com.bakerypos.security.CustomUserDetailsService customUserDetailsService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.customUserDetailsService = customUserDetailsService;
     }
 
+    @Transactional(readOnly = true)
     public List<UserDto> getAllUsers() {
         return userRepository.findAll().stream()
                 .map(this::mapToDto)
@@ -58,6 +63,7 @@ public class UserService {
 
         user.setActive(!user.isActive());
         userRepository.save(user);
+        customUserDetailsService.evictUser(user.getUsername());
     }
 
     @Transactional
@@ -69,6 +75,7 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
         user.setPasswordHash(passwordEncoder.encode(newPassword.trim()));
         userRepository.save(user);
+        customUserDetailsService.evictUser(user.getUsername());
     }
 
     private UserDto mapToDto(User user) {

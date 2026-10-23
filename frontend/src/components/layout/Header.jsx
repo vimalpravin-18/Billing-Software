@@ -7,19 +7,35 @@ import { Store, LogOut, Clock, Menu, ShoppingBag, Sun, Moon, KeyRound } from 'lu
 import ChangePasswordModal from '../auth/ChangePasswordModal';
 import LogoutConfirmModal from '../auth/LogoutConfirmModal';
 
-const Header = ({ onOpenMobileMenu }) => {
-  const { user, logout } = useAuth();
-  const { itemCount, grandTotal } = useCart();
-  const { toggleTheme, isDark } = useTheme();
-  const location = useLocation();
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
+const LiveStationClock = React.memo(() => {
+  const [currentTime, setCurrentTime] = useState(() => new Date());
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  return (
+    <div className="hidden md:flex items-center space-x-2 px-3 sm:px-3.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800/80 border-2 border-slate-900 dark:border-slate-700 text-slate-900 dark:text-slate-200 text-xs sm:text-sm font-mono shadow-2xs shrink-0">
+      <Clock className="w-4 h-4 text-slate-800 dark:text-slate-300 shrink-0" />
+      <span className="font-medium whitespace-nowrap">
+        {currentTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+      </span>
+      <span className="text-slate-300 dark:text-slate-600">|</span>
+      <span className="text-slate-900 dark:text-white font-bold tracking-tight whitespace-nowrap">
+        {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+      </span>
+    </div>
+  );
+});
+
+const Header = ({ onOpenMobileMenu }) => {
+  const { user, logout } = useAuth();
+  const { itemCount, grandTotal } = useCart();
+  const { toggleTheme, isDark } = useTheme();
+  const location = useLocation();
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   return (
     <header className="h-16 bg-white dark:bg-[#111622] border-b-2 border-slate-900 dark:border-slate-800 px-3 sm:px-5 lg:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs select-none transition-colors duration-150">
@@ -44,17 +60,8 @@ const Header = ({ onOpenMobileMenu }) => {
         </Link>
       </div>
 
-      {/* Center: Live Station Clock */}
-      <div className="hidden md:flex items-center space-x-2 px-3 sm:px-3.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800/80 border-2 border-slate-900 dark:border-slate-700 text-slate-900 dark:text-slate-200 text-xs sm:text-sm font-mono shadow-2xs shrink-0">
-        <Clock className="w-4 h-4 text-slate-800 dark:text-slate-300 shrink-0" />
-        <span className="font-medium whitespace-nowrap">
-          {currentTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-        </span>
-        <span className="text-slate-300 dark:text-slate-600">|</span>
-        <span className="text-slate-900 dark:text-white font-bold tracking-tight whitespace-nowrap">
-          {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-        </span>
-      </div>
+      {/* Center: Live Station Clock (Isolated to prevent re-renders) */}
+      <LiveStationClock />
 
       {/* Right: Actions, Theme, Cart Pill, Identity */}
       <div className="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">

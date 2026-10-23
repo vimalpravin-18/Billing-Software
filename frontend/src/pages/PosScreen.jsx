@@ -39,16 +39,122 @@ const formatUnit = (unit) => {
   return u;
 };
 
+const getStoredJson = (key, fallback) => {
+  try {
+    const val = localStorage.getItem(key);
+    return val ? JSON.parse(val) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const setStoredJson = (key, data) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch {
+    // quota exceeded or storage disabled
+  }
+};
+
+let cachedMasterProducts = null;
+let cachedMasterCategories = null;
+let cachedMasterSettings = null;
+
+const ProductCard = React.memo(({ product, inCartQty, onAddToCart }) => {
+  const isOutOfStock = product.stockQuantity <= 0;
+  const price = Number(product.sellingPrice ?? product.price ?? 0);
+
+  return (
+    <div
+      onClick={() => !isOutOfStock && onAddToCart(product, 1)}
+      className={`group rounded-xl border-2 transition-all duration-150 flex flex-col justify-between select-none overflow-hidden min-h-[154px] sm:min-h-[160px] ${
+        isOutOfStock
+          ? 'opacity-40 grayscale cursor-not-allowed bg-slate-100 dark:bg-slate-900/60 border-slate-300 dark:border-slate-800'
+          : inCartQty > 0
+          ? 'cursor-pointer bg-white dark:bg-[#141a29] border-slate-950 dark:border-white shadow-sm ring-2 ring-slate-950 dark:ring-white'
+          : 'cursor-pointer bg-white dark:bg-[#141a29] border-slate-900 dark:border-slate-700 hover:border-black dark:hover:border-white hover:shadow-xs'
+      }`}
+    >
+      {/* Product Image Header */}
+      <div className="h-20 w-full bg-slate-100 dark:bg-slate-800 relative overflow-hidden shrink-0 border-b-2 border-slate-900 dark:border-slate-700">
+        <ProductImage product={product} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+
+        {/* Category Tag Badge */}
+        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-white/95 dark:bg-slate-900/95 text-[9px] font-black uppercase text-slate-950 dark:text-white shadow-2xs border border-slate-900 dark:border-slate-700 leading-none backdrop-blur-xs">
+          {product.category?.name || 'Bakery'}
+        </span>
+
+        {/* In Cart Indicator */}
+        {inCartQty > 0 && (
+          <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-slate-950 dark:bg-white text-white dark:text-slate-950 font-black text-[9px] shadow-xs flex items-center space-x-0.5 border border-slate-950 dark:border-white leading-none">
+            <Check className="w-2.5 h-2.5 stroke-[3.5]" />
+            <span>{inCartQty}</span>
+          </span>
+        )}
+      </div>
+
+      {/* Card Content: Title, Price & Stock */}
+      <div className="p-2 sm:p-2.5 flex-1 flex flex-col justify-between">
+        <h3
+          className="font-bold text-slate-950 dark:text-white text-xs sm:text-sm leading-snug line-clamp-1 flex items-center"
+          title={product.name}
+        >
+          {product.name}
+        </h3>
+
+        <div className="pt-1.5 mt-1 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-1">
+          {/* Price & Unit */}
+          <div className="flex items-baseline space-x-0.5 min-w-0">
+            <span className="text-xs sm:text-sm font-black font-mono text-slate-950 dark:text-white leading-none">
+              ₹{price.toFixed(2)}
+            </span>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 leading-none">
+              /{formatUnit(product.unit)}
+            </span>
+          </div>
+
+          {/* Stock Badge */}
+          <div className="shrink-0">
+            {isOutOfStock ? (
+              <span className="text-[9px] font-extrabold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-600 dark:border-rose-400 px-1.5 py-0.5 rounded uppercase leading-none block">
+                Out
+              </span>
+            ) : (
+              <span
+                className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase leading-none block whitespace-nowrap ${
+                  product.stockQuantity <= 5
+                    ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-800 dark:border-amber-700'
+                    : 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 border-emerald-800 dark:border-emerald-700'
+                }`}
+              >
+                {product.stockQuantity} {formatUnit(product.unit)}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 const PosScreen = () => {
   const { showSuccess, showError, showWarning } = useToast();
 
+  // Instant Hydration from Cache/LocalStorage
+  const initialProducts = useMemo(() => cachedMasterProducts || getStoredJson('pos_cached_products', []), []);
+  const initialCategories = useMemo(() => cachedMasterCategories || getStoredJson('pos_cached_categories', []), []);
+  const initialCustomers = useMemo(() => getStoredJson('pos_cached_customers', []), []);
+  const initialSettings = useMemo(() => cachedMasterSettings || getStoredJson('pos_cached_settings', null), []);
+
   // Master Data
-  const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [shopSettings, setShopSettings] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState(initialProducts);
+  const [categories, setCategories] = useState(initialCategories);
+  const [customers, setCustomers] = useState(initialCustomers);
+  const [shopSettings, setShopSettings] = useState(initialSettings);
+  const [loading, setLoading] = useState(initialProducts.length === 0);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   // Active Billing Ticket State
   const [cartItems, setCartItems] = useState([]);
@@ -62,10 +168,18 @@ const PosScreen = () => {
   const [paymentMethod, setPaymentMethod] = useState('CASH'); // 'CASH', 'UPI', 'CARD'
   const [invoiceNumber, setInvoiceNumber] = useState('');
 
-  // Search & Filter State
+  // Search & Filter State with Debouncing
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('ALL');
   const [mobileTab, setMobileTab] = useState('products'); // 'products' or 'bill' for mobile resolution
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Modals
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
@@ -93,36 +207,64 @@ const PosScreen = () => {
     setInvoiceNumber(`${prefix}-${dateStr}-${randSeq}`);
   }, []);
 
-  // Fetch initial master catalog and settings
-  const fetchMasterData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [prodRes, catRes, custRes, setRes] = await Promise.allSettled([
-        api.get('/products'),
-        api.get('/categories'),
-        api.get('/customers'),
-        api.get('/settings'),
-      ]);
+  // Fetch initial master catalog and settings with client-side caching & instant load
+  const fetchMasterData = useCallback(async (forceRefresh = false) => {
+    // If we already have cached items displayed, sync silently in background without blocking screen
+    if (products.length === 0) {
+      setLoading(true);
+    } else {
+      setIsSyncing(true);
+    }
 
-      if (prodRes.status === 'fulfilled') setProducts(prodRes.value.data || []);
-      if (catRes.status === 'fulfilled') setCategories(catRes.value.data || []);
-      if (custRes.status === 'fulfilled') setCustomers(custRes.value.data || []);
+    try {
+      const requests = [
+        api.get('/products'),
+        !forceRefresh && cachedMasterCategories ? Promise.resolve({ data: cachedMasterCategories }) : api.get('/categories'),
+        api.get('/customers'),
+        !forceRefresh && cachedMasterSettings ? Promise.resolve({ data: cachedMasterSettings }) : api.get('/settings'),
+      ];
+
+      const [prodRes, catRes, custRes, setRes] = await Promise.allSettled(requests);
+
+      if (prodRes.status === 'fulfilled') {
+        const prods = prodRes.value.data || [];
+        cachedMasterProducts = prods;
+        setStoredJson('pos_cached_products', prods);
+        setProducts(prods);
+      }
+      if (catRes.status === 'fulfilled') {
+        const cats = catRes.value.data || [];
+        cachedMasterCategories = cats;
+        setStoredJson('pos_cached_categories', cats);
+        setCategories(cats);
+      }
+      if (custRes.status === 'fulfilled') {
+        const custs = custRes.value.data || [];
+        setStoredJson('pos_cached_customers', custs);
+        setCustomers(custs);
+      }
       if (setRes.status === 'fulfilled') {
-        setShopSettings(setRes.value.data);
-        generateInvoiceNumber(setRes.value.data);
+        const settings = setRes.value.data;
+        cachedMasterSettings = settings;
+        setStoredJson('pos_cached_settings', settings);
+        setShopSettings(settings);
+        generateInvoiceNumber(settings);
       } else {
-        generateInvoiceNumber(null);
+        generateInvoiceNumber(shopSettings);
       }
     } catch (err) {
       console.error('Failed to load POS master data', err);
-      showError('Unable to connect to backend service. Please verify server status.');
+      if (products.length === 0) {
+        showError('Unable to connect to backend service. Please verify server status.');
+      }
     } finally {
       setLoading(false);
+      setIsSyncing(false);
     }
-  }, [generateInvoiceNumber, showError]);
+  }, [products.length, shopSettings, generateInvoiceNumber, showError]);
 
   useEffect(() => {
-    fetchMasterData();
+    fetchMasterData(false);
   }, [fetchMasterData]);
 
   // Fast Cart Quantity Map
@@ -166,7 +308,7 @@ const PosScreen = () => {
       const matchCat =
         selectedCategoryId === 'ALL' ||
         String(p.category?.id || p.categoryId) === String(selectedCategoryId);
-      const query = searchQuery.trim().toLowerCase();
+      const query = debouncedSearch.trim().toLowerCase();
       const matchQuery =
         !query ||
         p.name.toLowerCase().includes(query) ||
@@ -174,50 +316,53 @@ const PosScreen = () => {
         (p.barcode && p.barcode.toLowerCase().includes(query));
       return matchCat && matchQuery;
     });
-  }, [products, selectedCategoryId, searchQuery]);
+  }, [products, selectedCategoryId, debouncedSearch]);
 
-  // Add product to cart with stock validation
-  const handleAddToCart = (product, qtyToAdd = 1) => {
-    const existingIndex = cartItems.findIndex((item) => item.productId === product.id);
-    const unitPrice = Number(product.sellingPrice ?? product.price ?? 0);
-    const taxRate = Number(product.taxRate ?? shopSettings?.defaultTaxRate ?? 5.0);
+  // Add product to cart with stock validation (stable callback for memoized ProductCard)
+  const handleAddToCart = useCallback((product, qtyToAdd = 1) => {
+    setCartItems((prevItems) => {
+      const existingIndex = prevItems.findIndex((item) => item.productId === product.id);
+      const unitPrice = Number(product.sellingPrice ?? product.price ?? 0);
+      const taxRate = Number(product.taxRate ?? shopSettings?.defaultTaxRate ?? 5.0);
 
-    if (existingIndex > -1) {
-      const updated = [...cartItems];
-      const newQty = Number(updated[existingIndex].quantity) + Number(qtyToAdd);
+      if (existingIndex > -1) {
+        const updated = [...prevItems];
+        const newQty = Number(updated[existingIndex].quantity) + Number(qtyToAdd);
 
-      if (newQty > product.stockQuantity) {
-        showWarning(`Stock limit: only ${product.stockQuantity} ${product.unit} available for ${product.name}`);
-        return;
+        if (newQty > product.stockQuantity) {
+          showWarning(`Stock limit: only ${product.stockQuantity} ${product.unit} available for ${product.name}`);
+          return prevItems;
+        }
+
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          quantity: newQty,
+        };
+        showSuccess(`Added ${product.name}`);
+        return updated;
+      } else {
+        if (product.stockQuantity <= 0) {
+          showWarning(`${product.name} is currently out of stock`);
+          return prevItems;
+        }
+
+        const newItem = {
+          id: `cart-${product.id}-${Date.now()}`,
+          productId: product.id,
+          name: product.name,
+          imageUrl: product.imageUrl,
+          sku: product.sku || `ITEM-${product.id}`,
+          unit: product.unit || 'pcs',
+          price: unitPrice,
+          taxRate: taxRate,
+          quantity: Number(qtyToAdd),
+          stockQuantity: product.stockQuantity,
+        };
+        showSuccess(`Added ${product.name}`);
+        return [...prevItems, newItem];
       }
-
-      updated[existingIndex] = {
-        ...updated[existingIndex],
-        quantity: newQty,
-      };
-      setCartItems(updated);
-    } else {
-      if (product.stockQuantity <= 0) {
-        showWarning(`${product.name} is currently out of stock`);
-        return;
-      }
-
-      const newItem = {
-        id: `cart-${product.id}-${Date.now()}`,
-        productId: product.id,
-        name: product.name,
-        imageUrl: product.imageUrl,
-        sku: product.sku || `ITEM-${product.id}`,
-        unit: product.unit || 'pcs',
-        price: unitPrice,
-        taxRate: taxRate,
-        quantity: Number(qtyToAdd),
-        stockQuantity: product.stockQuantity,
-      };
-      setCartItems((prev) => [...prev, newItem]);
-    }
-    showSuccess(`Added ${product.name}`);
-  };
+    });
+  }, [shopSettings, showWarning, showSuccess]);
 
   // Update quantity directly
   const handleUpdateQuantity = (index, newQty) => {
@@ -347,14 +492,15 @@ const PosScreen = () => {
     }
   };
 
-  // Financial Calculations
+  // Financial Calculations (Exact 2-decimal rounded arithmetic)
   const calculations = useMemo(() => {
     let subtotal = 0;
     let taxTotal = 0;
 
     cartItems.forEach((item) => {
-      const lineTotal = Number(item.price) * Number(item.quantity);
-      const lineTax = lineTotal * ((Number(item.taxRate) || 0) / 100);
+      const lineTotal = Math.round((Number(item.price) * Number(item.quantity) + Number.EPSILON) * 100) / 100;
+      const taxRate = Number(item.taxRate) || 0;
+      const lineTax = Math.round(((lineTotal * taxRate) / 100 + Number.EPSILON) * 100) / 100;
       subtotal += lineTotal;
       taxTotal += lineTax;
     });
@@ -363,12 +509,12 @@ const PosScreen = () => {
     const inputVal = Number(discountAmount) || 0;
     if (discountType === 'percent') {
       const pct = Math.min(100, Math.max(0, inputVal));
-      discount = (subtotal * pct) / 100;
+      discount = Math.round(((subtotal * pct) / 100 + Number.EPSILON) * 100) / 100;
     } else {
-      discount = Math.min(subtotal, Math.max(0, inputVal));
+      discount = Math.min(subtotal, Math.max(0, Math.round((inputVal + Number.EPSILON) * 100) / 100));
     }
 
-    const grandTotal = Math.max(0, subtotal - discount + taxTotal);
+    const grandTotal = Math.max(0, Math.round((subtotal - discount + taxTotal + Number.EPSILON) * 100) / 100);
     const totalUnits = cartItems.reduce((acc, item) => acc + Number(item.quantity), 0);
 
     return {
@@ -381,13 +527,18 @@ const PosScreen = () => {
     };
   }, [cartItems, discountAmount, discountType]);
 
-  // Checkout & Submit Order to Backend
+  // Checkout & Submit Order to Backend (Guarded against double clicks & network retries)
   const handleCheckout = useCallback(async () => {
     if (cartItems.length === 0) {
       showWarning('Cannot checkout an empty ticket. Add items first.');
       return;
     }
 
+    if (isSubmittingRef.current) {
+      return;
+    }
+
+    isSubmittingRef.current = true;
     setSubmitting(true);
     try {
       const orderPayload = {
@@ -422,6 +573,7 @@ const PosScreen = () => {
       const msg = err.response?.data?.message || 'Transaction failed. Please check stock limits.';
       showError(msg);
     } finally {
+      isSubmittingRef.current = false;
       setSubmitting(false);
     }
   }, [cartItems, selectedCustomerId, paymentMethod, calculations.discount, shopSettings, generateInvoiceNumber, showSuccess, showError, showWarning]);
@@ -611,84 +763,14 @@ const PosScreen = () => {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 sm:gap-3">
-              {filteredProducts.map((p) => {
-                const inCartQty = cartItemMap.get(p.id) || 0;
-                const isOutOfStock = p.stockQuantity <= 0;
-                const price = Number(p.sellingPrice ?? p.price ?? 0);
-
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => !isOutOfStock && handleAddToCart(p, 1)}
-                    className={`group rounded-xl border-2 transition-all duration-150 flex flex-col justify-between select-none overflow-hidden min-h-[154px] sm:min-h-[160px] ${
-                      isOutOfStock
-                        ? 'opacity-40 grayscale cursor-not-allowed bg-slate-100 dark:bg-slate-900/60 border-slate-300 dark:border-slate-800'
-                        : inCartQty > 0
-                        ? 'cursor-pointer bg-white dark:bg-[#141a29] border-slate-950 dark:border-white shadow-sm ring-2 ring-slate-950 dark:ring-white'
-                        : 'cursor-pointer bg-white dark:bg-[#141a29] border-slate-900 dark:border-slate-700 hover:border-black dark:hover:border-white hover:shadow-xs'
-                    }`}
-                  >
-                    {/* Product Image Header */}
-                    <div className="h-20 w-full bg-slate-100 dark:bg-slate-800 relative overflow-hidden shrink-0 border-b-2 border-slate-900 dark:border-slate-700">
-                      <ProductImage product={p} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
-
-                      {/* Category Tag Badge */}
-                      <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-white/95 dark:bg-slate-900/95 text-[9px] font-black uppercase text-slate-950 dark:text-white shadow-2xs border border-slate-900 dark:border-slate-700 leading-none backdrop-blur-xs">
-                        {p.category?.name || 'Bakery'}
-                      </span>
-
-                      {/* In Cart Indicator */}
-                      {inCartQty > 0 && (
-                        <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-slate-950 dark:bg-white text-white dark:text-slate-950 font-black text-[9px] shadow-xs flex items-center space-x-0.5 border border-slate-950 dark:border-white leading-none">
-                          <Check className="w-2.5 h-2.5 stroke-[3.5]" />
-                          <span>{inCartQty}</span>
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Card Content: Title, Price & Stock */}
-                    <div className="p-2 sm:p-2.5 flex-1 flex flex-col justify-between">
-                      <h3
-                        className="font-bold text-slate-950 dark:text-white text-xs sm:text-sm leading-snug line-clamp-1 flex items-center"
-                        title={p.name}
-                      >
-                        {p.name}
-                      </h3>
-
-                      <div className="pt-1.5 mt-1 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-1">
-                        {/* Price & Unit */}
-                        <div className="flex items-baseline space-x-0.5 min-w-0">
-                          <span className="text-xs sm:text-sm font-black font-mono text-slate-950 dark:text-white leading-none">
-                            ₹{price.toFixed(2)}
-                          </span>
-                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 leading-none">
-                            /{formatUnit(p.unit)}
-                          </span>
-                        </div>
-
-                        {/* Stock Badge */}
-                        <div className="shrink-0">
-                          {isOutOfStock ? (
-                            <span className="text-[9px] font-extrabold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-600 dark:border-rose-400 px-1.5 py-0.5 rounded uppercase leading-none block">
-                              Out
-                            </span>
-                          ) : (
-                            <span
-                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase leading-none block whitespace-nowrap ${
-                                p.stockQuantity <= 5
-                                  ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-800 dark:border-amber-700'
-                                  : 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 border-emerald-800 dark:border-emerald-700'
-                              }`}
-                            >
-                              {p.stockQuantity} {formatUnit(p.unit)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {filteredProducts.map((p) => (
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  inCartQty={cartItemMap.get(p.id) || 0}
+                  onAddToCart={handleAddToCart}
+                />
+              ))}
             </div>
           )}
         </div>

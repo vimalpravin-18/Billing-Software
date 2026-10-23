@@ -30,20 +30,21 @@ public class BillingService {
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
     private final InventoryTransactionRepository inventoryTransactionRepository;
-    private final ShopSettingRepository shopSettingRepository;
+    private final ShopSettingService shopSettingService;
+    private final java.util.concurrent.atomic.AtomicLong invoiceCounter = new java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis() % 9000 + 1000);
 
     public BillingService(OrderRepository orderRepository,
                           ProductRepository productRepository,
                           CustomerRepository customerRepository,
                           UserRepository userRepository,
                           InventoryTransactionRepository inventoryTransactionRepository,
-                          ShopSettingRepository shopSettingRepository) {
+                          ShopSettingService shopSettingService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.customerRepository = customerRepository;
         this.userRepository = userRepository;
         this.inventoryTransactionRepository = inventoryTransactionRepository;
-        this.shopSettingRepository = shopSettingRepository;
+        this.shopSettingService = shopSettingService;
     }
 
     @Transactional
@@ -69,8 +70,11 @@ public class BillingService {
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal totalTax = BigDecimal.ZERO;
 
+        List<InventoryTransaction> transactions = new java.util.ArrayList<>();
+
         for (CreateOrderItemRequest itemReq : request.getItems()) {
-            Product product = productRepository.findById(itemReq.getProductId())
+            // Acquire pessimistic write lock to prevent concurrent overselling
+            Product product = productRepository.findByIdWithLock(itemReq.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + itemReq.getProductId()));
 
             if (!product.isActive()) {
@@ -103,20 +107,23 @@ public class BillingService {
 
             order.addOrderItem(orderItem);
 
-            // Deduct stock & log inventory transaction
+            // Deduct stock
             BigDecimal newStock = product.getStockQuantity().subtract(quantity);
             product.setStockQuantity(newStock);
-            productRepository.save(product);
 
-            InventoryTransaction tx = new InventoryTransaction(
+            transactions.add(new InventoryTransaction(
                     product,
                     quantity.negate(),
                     newStock,
                     "SALE",
                     "POS Order " + order.getInvoiceNumber(),
                     cashier
-            );
-            inventoryTransactionRepository.save(tx);
+            ));
+        }
+
+        // Batch save inventory transactions
+        if (!transactions.isEmpty()) {
+            inventoryTransactionRepository.saveAll(transactions);
         }
 
         BigDecimal discount = request.getDiscountAmount() != null ? request.getDiscountAmount() : BigDecimal.ZERO;
@@ -177,16 +184,11 @@ public class BillingService {
                 .collect(Collectors.toList());
     }
 
-    private synchronized String generateInvoiceNumber() {
-        String prefix = "INV";
-        List<ShopSetting> settings = shopSettingRepository.findAll();
-        if (!settings.isEmpty() && settings.get(0).getInvoicePrefix() != null) {
-            prefix = settings.get(0).getInvoicePrefix();
-        }
-
+    private String generateInvoiceNumber() {
+        String prefix = shopSettingService.getCachedInvoicePrefix();
         String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        long nextId = orderRepository.count() + 1;
-        return String.format("%s-%s-%04d", prefix, datePart, nextId);
+        long seq = invoiceCounter.incrementAndGet() % 10000;
+        return String.format("%s-%s-%04d", prefix, datePart, seq);
     }
 
     public OrderResponseDto mapToResponseDto(Order order) {

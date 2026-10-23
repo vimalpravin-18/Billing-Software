@@ -8,17 +8,25 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 public class ShopSettingService {
 
     private final ShopSettingRepository shopSettingRepository;
+    private final AtomicReference<ShopSettingDto> cachedSetting = new AtomicReference<>();
 
     public ShopSettingService(ShopSettingRepository shopSettingRepository) {
         this.shopSettingRepository = shopSettingRepository;
     }
 
+    @Transactional(readOnly = true)
     public ShopSettingDto getShopSetting() {
+        ShopSettingDto cached = cachedSetting.get();
+        if (cached != null) {
+            return cached;
+        }
+
         List<ShopSetting> list = shopSettingRepository.findAll();
         if (list.isEmpty()) {
             ShopSetting defaultSetting = new ShopSetting();
@@ -31,9 +39,22 @@ public class ShopSettingService {
             defaultSetting.setCurrencySymbol("₹");
             defaultSetting.setReceiptFooterText("Thank you for visiting Sweet Delights Bakery! Have a sweet day!");
             ShopSetting saved = shopSettingRepository.save(defaultSetting);
-            return mapToDto(saved);
+            ShopSettingDto dto = mapToDto(saved);
+            cachedSetting.set(dto);
+            return dto;
         }
-        return mapToDto(list.get(0));
+
+        ShopSettingDto dto = mapToDto(list.get(0));
+        cachedSetting.set(dto);
+        return dto;
+    }
+
+    public String getCachedInvoicePrefix() {
+        ShopSettingDto setting = cachedSetting.get();
+        if (setting == null) {
+            setting = getShopSetting();
+        }
+        return setting.getInvoicePrefix() != null ? setting.getInvoicePrefix() : "INV";
     }
 
     @Transactional
@@ -51,7 +72,9 @@ public class ShopSettingService {
         setting.setReceiptFooterText(dto.getReceiptFooterText());
 
         ShopSetting saved = shopSettingRepository.save(setting);
-        return mapToDto(saved);
+        ShopSettingDto updatedDto = mapToDto(saved);
+        cachedSetting.set(updatedDto);
+        return updatedDto;
     }
 
     private ShopSettingDto mapToDto(ShopSetting setting) {

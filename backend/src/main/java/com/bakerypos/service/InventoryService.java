@@ -60,12 +60,14 @@ public class InventoryService {
         return mapToDto(saved);
     }
 
+    @Transactional(readOnly = true)
     public List<InventoryTransactionDto> getTransactionsByProduct(Long productId) {
         return inventoryTransactionRepository.findByProductIdOrderByCreatedAtDesc(productId).stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public List<InventoryTransactionDto> getAllTransactions() {
         return inventoryTransactionRepository.findAllByOrderByCreatedAtDesc().stream()
                 .map(this::mapToDto)

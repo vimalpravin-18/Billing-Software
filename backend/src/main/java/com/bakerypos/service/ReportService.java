@@ -5,7 +5,9 @@ import com.bakerypos.repository.CustomerRepository;
 import com.bakerypos.repository.OrderItemRepository;
 import com.bakerypos.repository.OrderRepository;
 import com.bakerypos.repository.ProductRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -29,20 +31,20 @@ public class ReportService {
         this.customerRepository = customerRepository;
     }
 
+    @Transactional(readOnly = true)
     public DashboardSummaryDto getDashboardSummary() {
         LocalDateTime startOfDay = LocalDateTime.of(LocalDate.now(), LocalTime.MIN);
         LocalDateTime endOfDay = LocalDateTime.of(LocalDate.now(), LocalTime.MAX);
 
         BigDecimal todaySales = orderRepository.sumTotalAmountBetween(startOfDay, endOfDay);
         long todayOrders = orderRepository.countOrdersBetween(startOfDay, endOfDay);
-        long lowStockCount = productRepository.findLowStockProducts().size();
+        long lowStockCount = productRepository.countLowStockProducts();
         long totalProducts = productRepository.count();
         long totalCustomers = customerRepository.count();
 
-        // Top 5 selling products today
-        List<Object[]> topProdObjects = orderItemRepository.findTopSellingProductsBetween(startOfDay, endOfDay);
+        // Top 5 selling products today (pushed limit directly to PostgreSQL)
+        List<Object[]> topProdObjects = orderItemRepository.findTopSellingProductsBetween(startOfDay, endOfDay, PageRequest.of(0, 5));
         List<DashboardSummaryDto.TopProductDto> topProducts = topProdObjects.stream()
-                .limit(5)
                 .map(obj -> new DashboardSummaryDto.TopProductDto(
                         (String) obj[0],
                         (BigDecimal) obj[1],

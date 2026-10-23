@@ -1,19 +1,30 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
 import Layout from './components/layout/Layout';
-import Login from './pages/Login';
-import PosScreen from './pages/PosScreen';
-import DashboardPage from './pages/DashboardPage';
-import ProductsPage from './pages/ProductsPage';
-import InventoryPage from './pages/InventoryPage';
-import CustomersPage from './pages/CustomersPage';
-import OrdersPage from './pages/OrdersPage';
-import UsersPage from './pages/UsersPage';
-import SettingsPage from './pages/SettingsPage';
+
+// Route-level code splitting via React.lazy
+const Login = lazy(() => import('./pages/Login'));
+const PosScreen = lazy(() => import('./pages/PosScreen'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const ProductsPage = lazy(() => import('./pages/ProductsPage'));
+const InventoryPage = lazy(() => import('./pages/InventoryPage'));
+const CustomersPage = lazy(() => import('./pages/CustomersPage'));
+const OrdersPage = lazy(() => import('./pages/OrdersPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+
+const PageLoadingFallback = () => (
+  <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-slate-500">
+    <div className="w-10 h-10 border-3 border-amber-500 border-t-transparent rounded-full animate-spin mb-3" />
+    <span className="text-xs font-black tracking-wider uppercase text-slate-600 dark:text-slate-400">
+      Loading...
+    </span>
+  </div>
+);
 
 const ProtectedRoute = ({ children }) => {
   const { user } = useAuth();
@@ -97,7 +108,9 @@ export default function App() {
         <ToastProvider>
           <CartProvider>
             <BrowserRouter>
-              <AppRoutes />
+              <Suspense fallback={<PageLoadingFallback />}>
+                <AppRoutes />
+              </Suspense>
             </BrowserRouter>
           </CartProvider>
         </ToastProvider>
