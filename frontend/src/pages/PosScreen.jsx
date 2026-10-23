@@ -149,6 +149,16 @@ const ProductCard = React.memo(({ product, inCartQty, onAddToCart }) => {
       </div>
     </div>
   );
+}, (prev, next) => {
+  return (
+    prev.inCartQty === next.inCartQty &&
+    prev.product?.id === next.product?.id &&
+    prev.product?.stockQuantity === next.product?.stockQuantity &&
+    prev.product?.sellingPrice === next.product?.sellingPrice &&
+    prev.product?.price === next.product?.price &&
+    prev.product?.name === next.product?.name &&
+    prev.onAddToCart === next.onAddToCart
+  );
 });
 
 const PosScreen = () => {
@@ -165,6 +175,11 @@ const PosScreen = () => {
   const [categories, setCategories] = useState(initialCategories);
   const [customers, setCustomers] = useState(initialCustomers);
   const [shopSettings, setShopSettings] = useState(initialSettings);
+  const shopSettingsRef = useRef(initialSettings);
+  useEffect(() => {
+    shopSettingsRef.current = shopSettings;
+  }, [shopSettings]);
+  const isFetchingRef = useRef(false);
   const [loading, setLoading] = useState(initialProducts.length === 0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -214,23 +229,24 @@ const PosScreen = () => {
 
   const searchInputRef = useRef(null);
 
-  const generateInvoiceNumber = useCallback((settings) => {
-    const prefix = settings?.invoicePrefix || 'BAKE';
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const randSeq = String(Math.floor(1000 + Math.random() * 9000));
-    setInvoiceNumber(`${prefix}-${dateStr}-${randSeq}`);
+  const generateInvoiceNumber = useCallback((settings, force = false) => {
+    setInvoiceNumber((prev) => {
+      if (prev && !force) return prev;
+      const s = settings || shopSettingsRef.current;
+      const prefix = s?.invoicePrefix || 'BAKE';
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const randSeq = String(Math.floor(1000 + Math.random() * 9000));
+      return `${prefix}-${dateStr}-${randSeq}`;
+    });
   }, []);
 
   // Fetch initial master catalog and settings with client-side caching & instant load
   const fetchMasterData = useCallback(async (forceRefresh = false) => {
-    // If we already have cached items displayed, sync silently in background without blocking screen
-    if (products.length === 0) {
-      setLoading(true);
-    } else {
-      setIsSyncing(true);
-    }
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
 
     try {
+      setIsSyncing(true);
       const requests = [
         api.get('/products', { timeout: 8000 }),
         !forceRefresh && cachedMasterCategories ? Promise.resolve({ data: cachedMasterCategories }) : api.get('/categories', { timeout: 8000 }),
@@ -266,17 +282,16 @@ const PosScreen = () => {
         setStoredJson('pos_cached_settings', settings);
         saveSettingsToDb(settings);
         setShopSettings(settings);
-        generateInvoiceNumber(settings);
-      } else {
-        generateInvoiceNumber(shopSettings);
+        generateInvoiceNumber(settings, false);
       }
     } catch (err) {
       console.warn('Network master data fetch fallback to local storage:', err);
     } finally {
       setLoading(false);
       setIsSyncing(false);
+      isFetchingRef.current = false;
     }
-  }, [products.length, shopSettings, generateInvoiceNumber]);
+  }, [generateInvoiceNumber]);
 
   // On mount: hydrate from IndexedDB first for instant 0ms load, then background sync
   useEffect(() => {
@@ -296,7 +311,9 @@ const PosScreen = () => {
           if (dbCusts && dbCusts.length > 0) setCustomers(dbCusts);
           if (dbSettings) {
             setShopSettings(dbSettings);
-            generateInvoiceNumber(dbSettings);
+            generateInvoiceNumber(dbSettings, false);
+          } else {
+            generateInvoiceNumber(null, false);
           }
           setLoading(false);
         }
@@ -311,7 +328,7 @@ const PosScreen = () => {
 
     hydrateLocalDb();
     return () => { isMounted = false; };
-  }, [fetchMasterData, generateInvoiceNumber]);
+  }, []); // Run ONLY once on mount
 
   // Fast Cart Quantity Map
   const cartItemMap = useMemo(() => {
@@ -350,17 +367,21 @@ const PosScreen = () => {
 
   // Filtered Products for Catalog
   const filteredProducts = useMemo(() => {
+    const query = debouncedSearch.trim().toLowerCase();
+    const isAll = selectedCategoryId === 'ALL';
+    const targetCatIdStr = String(selectedCategoryId);
+
     return products.filter((p) => {
-      const matchCat =
-        selectedCategoryId === 'ALL' ||
-        String(p.category?.id || p.categoryId) === String(selectedCategoryId);
-      const query = debouncedSearch.trim().toLowerCase();
-      const matchQuery =
-        !query ||
-        p.name.toLowerCase().includes(query) ||
+      const pCatId = p.category?.id != null ? String(p.category.id) : p.categoryId != null ? String(p.categoryId) : '';
+      const matchCat = isAll || pCatId === targetCatIdStr;
+      if (!matchCat) return false;
+
+      if (!query) return true;
+      return (
+        (p.name && p.name.toLowerCase().includes(query)) ||
         (p.sku && p.sku.toLowerCase().includes(query)) ||
-        (p.barcode && p.barcode.toLowerCase().includes(query));
-      return matchCat && matchQuery;
+        (p.barcode && p.barcode.toLowerCase().includes(query))
+      );
     });
   }, [products, selectedCategoryId, debouncedSearch]);
 
@@ -369,7 +390,7 @@ const PosScreen = () => {
     setCartItems((prevItems) => {
       const existingIndex = prevItems.findIndex((item) => item.productId === product.id);
       const unitPrice = Number(product.sellingPrice ?? product.price ?? 0);
-      const taxRate = Number(product.taxRate ?? shopSettings?.defaultTaxRate ?? 5.0);
+      const taxRate = Number(product.taxRate ?? shopSettingsRef.current?.defaultTaxRate ?? 5.0);
 
       if (existingIndex > -1) {
         const updated = [...prevItems];
@@ -408,7 +429,7 @@ const PosScreen = () => {
         return [...prevItems, newItem];
       }
     });
-  }, [shopSettings, showWarning, showSuccess]);
+  }, [showWarning, showSuccess]);
 
   // Update quantity directly
   const handleUpdateQuantity = (index, newQty) => {
@@ -443,7 +464,7 @@ const PosScreen = () => {
     setSelectedCustomer(null);
     setCustomerSearchTerm('');
     setIsCustomerDropdownOpen(false);
-    generateInvoiceNumber(shopSettings);
+    generateInvoiceNumber(shopSettingsRef.current, true);
     showSuccess('Cleared active ticket');
   };
 
@@ -705,11 +726,11 @@ const PosScreen = () => {
     setSelectedCustomerId('');
     setSelectedCustomer(null);
     setCustomerSearchTerm('');
-    generateInvoiceNumber(shopSettings);
+    generateInvoiceNumber(shopSettingsRef.current, true);
 
     isSubmittingRef.current = false;
     setSubmitting(false);
-  }, [cartItems, selectedCustomerId, selectedCustomer, paymentMethod, calculations, shopSettings, invoiceNumber, generateInvoiceNumber, showSuccess, showWarning]);
+  }, [cartItems, selectedCustomerId, selectedCustomer, paymentMethod, calculations, invoiceNumber, generateInvoiceNumber, showSuccess, showWarning]);
 
   // Keyboard shortcut listener (Ctrl+/ for search, F4 for checkout)
   useEffect(() => {
