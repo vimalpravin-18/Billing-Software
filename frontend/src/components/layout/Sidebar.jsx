@@ -98,12 +98,16 @@ const Sidebar = ({ isOpen, onClose, collapsed, setCollapsed }) => {
       >
         {/* Mobile Header in Drawer (< 768px) */}
         <div className="flex items-center justify-between px-3.5 pb-2.5 border-b-2 border-slate-900 dark:border-slate-800 md:hidden">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-lg bg-slate-950 dark:bg-white flex items-center justify-center text-white dark:text-slate-900 border-2 border-slate-950">
-              <Store className="w-4 h-4 stroke-[2.5]" />
-            </div>
+          <div className="flex items-center space-x-2.5">
+            <img
+              src="/bakeflow-logo.jpg"
+              alt="BakeFlow"
+              className="w-9 h-9 rounded-xl object-cover border-2 border-slate-950 dark:border-amber-500/50 shadow-xs"
+            />
             <div>
-              <span className="font-black text-base text-slate-950 dark:text-white block leading-tight">BakeryPOS</span>
+              <span className="font-black text-base text-slate-950 dark:text-white block leading-tight">
+                Bake<span className="text-amber-500">Flow</span>
+              </span>
               <span className="text-xs text-slate-700 dark:text-slate-300 font-bold">
                 {user?.role === 'ROLE_ADMIN' ? 'Admin Portal' : 'Cashier Station'}
               </span>

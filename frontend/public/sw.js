@@ -1,13 +1,11 @@
-// BakeryPOS Service Worker for Browser Installation & PWA Support
-const CACHE_NAME = 'bakerypos-v1';
+// BakeFlow Service Worker for Browser Installation & PWA Support
+const CACHE_NAME = 'bakeflow-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/favicon.svg',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/apple-touch-icon.png'
+  '/bakeflow-logo.jpg',
+  '/favicon.svg'
 ];
 
 self.addEventListener('install', (event) => {

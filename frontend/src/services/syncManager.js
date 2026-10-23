@@ -1,5 +1,5 @@
 /**
- * BakeryPOS - Offline Sync Manager
+ * BakeFlow - Offline Sync Manager
  * Manages network status monitoring, automatic background synchronization of offline orders,
  * and event dispatching for UI status indicators.
  */

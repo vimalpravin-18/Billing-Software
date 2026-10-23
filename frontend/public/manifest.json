@@ -1,17 +1,11 @@
 {
-  "short_name": "BakeryPOS",
-  "name": "BakeryPOS — Commercial Billing System",
-  "description": "Enterprise-grade commercial bakery billing, POS counter, and store inventory management system.",
+  "short_name": "BakeFlow",
+  "name": "BakeFlow — Smart Bakery POS & Billing",
+  "description": "Next-gen intelligent commercial bakery billing, POS counter, and store inventory management system.",
   "icons": [
     {
-      "src": "/icon-192.png",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "type": "image/png",
+      "src": "/bakeflow-logo.jpg",
+      "type": "image/jpeg",
       "sizes": "512x512",
       "purpose": "any maskable"
     }

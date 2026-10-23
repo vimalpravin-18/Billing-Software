@@ -1,5 +1,5 @@
 /**
- * BakeryPOS Enterprise Design System Tokens
+ * BakeFlow Enterprise Design System Tokens
  * Clean, high-legibility, professional retail/POS tokens.
  * Zero neon gradients, high-contrast typography, crisp boundaries.
  */

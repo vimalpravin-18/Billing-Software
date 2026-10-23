@@ -395,9 +395,9 @@ export const exportAllDataAsJson = async () => {
   ]);
 
   return {
-    version: '1.0',
+    version: '2.0',
     exportedAt: new Date().toISOString(),
-    system: 'BakeryPOS',
+    system: 'BakeFlow',
     data: {
       products,
       categories,

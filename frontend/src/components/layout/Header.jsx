@@ -51,12 +51,14 @@ const Header = ({ onOpenMobileMenu }) => {
           <Menu className="w-5 h-5 stroke-[2.2]" />
         </button>
 
-        <Link to="/pos" className="flex items-center space-x-2 sm:space-x-2.5 group shrink-0 focus:outline-hidden">
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-950 dark:bg-slate-800 border-2 border-slate-950 dark:border-slate-700 flex items-center justify-center text-white shadow-xs group-hover:bg-slate-800 transition-colors shrink-0">
-            <Store className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
-          </div>
+        <Link to="/pos" className="flex items-center space-x-2.5 group shrink-0 focus:outline-hidden">
+          <img
+            src="/bakeflow-logo.jpg"
+            alt="BakeFlow Logo"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl object-cover border-2 border-slate-950 dark:border-amber-500/50 shadow-xs group-hover:scale-105 transition-transform shrink-0"
+          />
           <span className="text-lg sm:text-xl font-black tracking-tight text-slate-950 dark:text-white whitespace-nowrap">
-            BakeryPOS
+            Bake<span className="text-amber-500">Flow</span>
           </span>
         </Link>
       </div>

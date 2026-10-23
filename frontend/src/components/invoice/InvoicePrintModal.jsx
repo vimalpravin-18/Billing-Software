@@ -189,7 +189,7 @@ const InvoicePrintModal = ({ order, shopSettings, onClose }) => {
               {/* Footer */}
               <div className="mt-6 pt-4 border-t border-dashed border-slate-300 text-center font-sans text-[10px] text-slate-500">
                 <p className="font-semibold text-slate-800">{footerText}</p>
-                <p className="text-[9px] text-slate-400 mt-1">Powered by BakeryPOS Enterprise</p>
+                <p className="text-[9px] text-slate-400 mt-1">Powered by BakeFlow Enterprise POS</p>
               </div>
             </div>
           ) : (

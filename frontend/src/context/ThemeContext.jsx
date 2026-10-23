@@ -4,14 +4,14 @@ const ThemeContext = createContext();
 
 export const ThemeProvider = ({ children }) => {
   const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('bakerypos_theme');
+    const saved = localStorage.getItem('bakeflow_theme') || localStorage.getItem('bakerypos_theme');
     if (saved) return saved;
     // Default to 'light' for clean commercial retail bakery counter look
     return 'light';
   });
 
   useEffect(() => {
-    localStorage.setItem('bakerypos_theme', theme);
+    localStorage.setItem('bakeflow_theme', theme);
     const root = document.documentElement;
     if (theme === 'dark') {
       root.classList.add('dark');

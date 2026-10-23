@@ -27,7 +27,7 @@ const SettingsPage = () => {
     try {
       const backupData = await exportAllDataAsJson();
       const dateStr = new Date().toISOString().slice(0, 10);
-      const filename = `bakerypos_local_backup_${dateStr}.json`;
+      const filename = `bakeflow_backup_${dateStr}.json`;
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -241,7 +241,7 @@ const SettingsPage = () => {
           <div className="p-3 bg-slate-50 dark:bg-[#171c2b] rounded-xl border border-slate-200 dark:border-slate-700/80 text-center font-mono text-xs text-slate-600 dark:text-slate-300">
             <span className="text-xs text-amber-600 dark:text-amber-400 block uppercase mb-1 font-sans font-bold">Thermal Receipt Preview</span>
             <p className="text-slate-900 dark:text-white font-bold text-sm">{form.receiptFooterText || 'Thank you for your visit!'}</p>
-            <p className="text-xs text-slate-400 mt-0.5">Powered by BakeryPOS</p>
+            <p className="text-xs text-slate-400 mt-0.5">Powered by BakeFlow Enterprise POS</p>
           </div>
         </div>
 

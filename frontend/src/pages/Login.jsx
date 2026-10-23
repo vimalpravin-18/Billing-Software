@@ -62,12 +62,18 @@ const Login = () => {
       <div className="w-full max-w-md bg-white dark:bg-[#121622] border border-slate-200 dark:border-slate-700/80 rounded-3xl p-8 shadow-xl dark:shadow-2xl relative z-10 transition-colors">
         {/* Header Branding */}
         <div className="text-center mb-7">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 mx-auto flex items-center justify-center shadow-lg shadow-amber-500/25 mb-4">
-            <Store className="w-9 h-9 text-slate-950 font-black" />
+          <div className="w-20 h-20 rounded-3xl mx-auto mb-4 overflow-hidden shadow-xl shadow-amber-500/20 border-2 border-amber-500/60 bg-slate-950 p-1 flex items-center justify-center">
+            <img
+              src="/bakeflow-logo.jpg"
+              alt="BakeFlow Logo"
+              className="w-full h-full object-cover rounded-2xl"
+            />
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">BakeryPOS</h2>
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+            Bake<span className="text-amber-500">Flow</span>
+          </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-300 font-medium mt-1">
-            Commercial Bakery Counter & Store Management
+            Smart Bakery POS & Enterprise Billing
           </p>
         </div>
 
@@ -136,7 +142,7 @@ const Login = () => {
 
         <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/80 text-center">
           <p className="text-xs text-slate-400 font-medium">
-            Authorized Personnel Only • BakeryPOS v1.0 Production
+            Authorized Personnel Only • BakeFlow v2.0 Enterprise Cloud & Offline POS
           </p>
         </div>
       </div>
